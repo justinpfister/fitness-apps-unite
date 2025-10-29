@@ -29,7 +29,12 @@ async function testPeloton() {
 async function testGarmin() {
   console.log('\n--- Testing Garmin Connection ---');
   try {
-    const client = new GarminClient(config.garmin.username, config.garmin.password);
+    const client = new GarminClient(
+      config.garmin.username, 
+      config.garmin.password,
+      config.garmin.useTokens,
+      config.garmin.tokenPath
+    );
     const activities = await client.getRecentActivities(5);
     console.log(`✓ Successfully connected to Garmin Connect`);
     console.log(`  Found ${activities.length} recent activities`);

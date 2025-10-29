@@ -10,6 +10,8 @@ export const config = {
   garmin: {
     username: process.env.GARMIN_USERNAME || '',
     password: process.env.GARMIN_PASSWORD || '',
+    useTokens: ['1', 'true', 'yes'].includes((process.env.GARMIN_USE_TOKENS || '').toLowerCase()),
+    tokenPath: process.env.GARMIN_TOKEN_PATH || './data/garmin-tokens',
   },
   strava: {
     clientId: process.env.STRAVA_CLIENT_ID || '',

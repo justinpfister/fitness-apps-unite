@@ -16,7 +16,9 @@ export class SyncOrchestrator {
     
     this.garminClient = new GarminClient(
       config.garmin.username,
-      config.garmin.password
+      config.garmin.password,
+      config.garmin.useTokens,
+      config.garmin.tokenPath
     );
     
     this.stravaClient = new StravaClient(

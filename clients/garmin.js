@@ -2,8 +2,8 @@ import { logger } from '../utils/logger.js';
 import { GarminAuth } from '../auth/garmin.js';
 
 export class GarminClient {
-  constructor(username, password) {
-    this.auth = new GarminAuth(username, password);
+  constructor(username, password, useTokens = false, tokenPath = './data/garmin-tokens') {
+    this.auth = new GarminAuth(username, password, useTokens, tokenPath);
     this.username = username;
     this.password = password;
   }

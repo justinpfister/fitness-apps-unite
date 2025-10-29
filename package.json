@@ -8,7 +8,8 @@
     "start": "node index.js",
     "scheduler": "node scheduler/cron.js",
     "test": "node tools/test-connection.js",
-    "strava-auth": "node tools/get-strava-token.js"
+    "strava-auth": "node tools/get-strava-token.js",
+    "garmin-setup": "node tools/garmin-token-setup.js"
   },
   "keywords": [
     "peloton",
