@@ -1,18 +1,16 @@
-import axios from 'axios';
 import { logger } from '../utils/logger.js';
 import { GarminAuth } from '../auth/garmin.js';
 
 export class GarminClient {
   constructor(username, password) {
-    this.auth = new GarminAuth();
+    this.auth = new GarminAuth(username, password);
     this.username = username;
     this.password = password;
-    this.baseUrl = 'https://connect.garmin.com';
   }
 
   async ensureAuthenticated() {
     if (!this.auth.isAuthenticated()) {
-      await this.auth.login(this.username, this.password);
+      await this.auth.login();
     }
   }
 
@@ -22,25 +20,14 @@ export class GarminClient {
     try {
       logger.info('Fetching recent Garmin activities');
       
-      const response = await axios.get(
-        `${this.baseUrl}/activitylist-service/activities/search/activities`,
-        {
-          params: {
-            limit: limit,
-            start: 0,
-          },
-          headers: {
-            Cookie: this.auth.getSessionCookie(),
-          },
-        }
-      );
+      const client = this.auth.getClient();
+      const activities = await client.getActivities(0, limit);
 
-      const activities = response.data || [];
       logger.info(`Found ${activities.length} Garmin activities`);
 
       return activities.map(activity => this.parseActivity(activity));
     } catch (error) {
-      logger.error('Failed to fetch Garmin activities', error.response?.data || error.message);
+      logger.error('Failed to fetch Garmin activities', error.message);
       throw error;
     }
   }
@@ -49,18 +36,11 @@ export class GarminClient {
     await this.ensureAuthenticated();
     
     try {
-      const response = await axios.get(
-        `${this.baseUrl}/activity-service/activity/${activityId}`,
-        {
-          headers: {
-            Cookie: this.auth.getSessionCookie(),
-          },
-        }
-      );
-
-      return response.data;
+      const client = this.auth.getClient();
+      const activity = await client.getActivity(activityId);
+      return activity;
     } catch (error) {
-      logger.error('Failed to fetch activity details', error.response?.data || error.message);
+      logger.error('Failed to fetch activity details', error.message);
       return null;
     }
   }
@@ -69,18 +49,11 @@ export class GarminClient {
     await this.ensureAuthenticated();
     
     try {
-      const response = await axios.get(
-        `${this.baseUrl}/activity-service/activity/${activityId}/details`,
-        {
-          headers: {
-            Cookie: this.auth.getSessionCookie(),
-          },
-        }
-      );
-
-      return this.parseSamples(response.data);
+      const client = this.auth.getClient();
+      const activity = await client.getActivity(activityId);
+      return this.parseSamples(activity);
     } catch (error) {
-      logger.error('Failed to fetch activity samples', error.response?.data || error.message);
+      logger.error('Failed to fetch activity samples', error.message);
       return [];
     }
   }
@@ -91,21 +64,13 @@ export class GarminClient {
     try {
       logger.info('Uploading activity to Garmin Connect', { activityName });
       
-      const response = await axios.post(
-        `${this.baseUrl}/upload-service/upload`,
-        tcxData,
-        {
-          headers: {
-            Cookie: this.auth.getSessionCookie(),
-            'Content-Type': 'application/octet-stream',
-          },
-        }
-      );
+      const client = this.auth.getClient();
+      const result = await client.uploadActivity(tcxData);
 
       logger.info('Successfully uploaded activity to Garmin Connect');
-      return response.data;
+      return result;
     } catch (error) {
-      logger.error('Failed to upload activity to Garmin', error.response?.data || error.message);
+      logger.error('Failed to upload activity to Garmin', error.message);
       throw error;
     }
   }
@@ -117,14 +82,14 @@ export class GarminClient {
     
     return {
       activityId: activity.activityId?.toString(),
-      activityName: activity.activityName || 'Garmin Activity',
+      activityName: activity.activityName || activity.name || 'Garmin Activity',
       startTime: startTime,
       endTime: endTime,
       duration: duration,
-      activityType: activity.activityType?.typeKey || 'other',
-      avgHeartRate: activity.averageHeartRate,
-      maxHeartRate: activity.maxHeartRate,
-      avgRunCadence: activity.averageRunCadence,
+      activityType: activity.activityType?.typeKey || activity.sport?.typeKey || 'other',
+      avgHeartRate: activity.averageHR || activity.averageHeartRate,
+      maxHeartRate: activity.maxHR || activity.maxHeartRate,
+      avgRunCadence: activity.averageRunningCadence || activity.averageRunCadence,
       avgCyclingCadence: activity.averageBikeCadence,
       calories: activity.calories,
       distance: activity.distance, // meters
@@ -135,6 +100,7 @@ export class GarminClient {
   parseSamples(data) {
     const samples = [];
     
+    // Handle garmin-connect library data structure
     if (data.metricDescriptors && data.activityDetailMetrics) {
       const descriptors = data.metricDescriptors;
       const metrics = data.activityDetailMetrics;
@@ -150,20 +116,31 @@ export class GarminClient {
           timestamp: new Date(metric.timestamp || metric.startTimeGMT),
         };
 
-        if (hrIndex >= 0 && metric.metrics[hrIndex]) {
+        if (hrIndex >= 0 && metric.metrics[hrIndex] !== undefined) {
           sample.heartRate = metric.metrics[hrIndex];
         }
-        if (cadenceIndex >= 0 && metric.metrics[cadenceIndex]) {
+        if (cadenceIndex >= 0 && metric.metrics[cadenceIndex] !== undefined) {
           sample.cadence = metric.metrics[cadenceIndex];
         }
-        if (speedIndex >= 0 && metric.metrics[speedIndex]) {
+        if (speedIndex >= 0 && metric.metrics[speedIndex] !== undefined) {
           sample.speed = metric.metrics[speedIndex];
         }
-        if (powerIndex >= 0 && metric.metrics[powerIndex]) {
+        if (powerIndex >= 0 && metric.metrics[powerIndex] !== undefined) {
           sample.power = metric.metrics[powerIndex];
         }
 
         samples.push(sample);
+      });
+    } else if (data.samples) {
+      // Handle simplified sample format if available
+      data.samples.forEach(sample => {
+        samples.push({
+          timestamp: new Date(sample.time),
+          heartRate: sample.heartRate,
+          cadence: sample.cadence,
+          speed: sample.speed,
+          power: sample.power,
+        });
       });
     }
 

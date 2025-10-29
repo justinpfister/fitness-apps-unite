@@ -1,62 +1,43 @@
-import axios from 'axios';
+import pkg from 'garmin-connect';
+const { GarminConnect } = pkg;
 import { logger } from '../utils/logger.js';
 
 export class GarminAuth {
-  constructor() {
-    this.baseUrl = 'https://connect.garmin.com';
-    this.sessionCookie = null;
+  constructor(username, password) {
+    this.username = username;
+    this.password = password;
+    this.client = null;
   }
 
-  async login(username, password) {
+  async login() {
     try {
       logger.info('Logging into Garmin Connect');
       
-      // Note: Garmin authentication is complex and may require using garmin-connect library
-      // For now, we'll use a simplified version with session-based auth
-      
-      // Step 1: Get CSRF token
-      const initResponse = await axios.get(`${this.baseUrl}/signin`, {
-        maxRedirects: 0,
-        validateStatus: (status) => status < 400,
+      // Create Garmin Connect client with credentials
+      this.client = new GarminConnect({
+        username: this.username,
+        password: this.password,
       });
 
-      // Step 2: Authenticate
-      const authResponse = await axios.post(
-        `${this.baseUrl}/signin`,
-        {
-          username: username,
-          password: password,
-          embed: false,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          maxRedirects: 0,
-          validateStatus: (status) => status < 400,
-        }
-      );
-
-      // Extract session cookie
-      const cookies = authResponse.headers['set-cookie'];
-      if (cookies) {
-        this.sessionCookie = cookies.join('; ');
-        logger.info('Successfully logged into Garmin Connect');
-      } else {
-        throw new Error('No session cookie received');
-      }
+      // Login to Garmin Connect (credentials already in constructor)
+      await this.client.login();
+      
+      logger.info('Successfully logged into Garmin Connect');
     } catch (error) {
-      logger.error('Failed to login to Garmin Connect', error.response?.data || error.message);
+      logger.error('Failed to login to Garmin Connect', error.message);
       throw new Error('Garmin authentication failed');
     }
   }
 
-  getSessionCookie() {
-    return this.sessionCookie;
+  getClient() {
+    if (!this.client) {
+      throw new Error('Not authenticated. Call login() first.');
+    }
+    return this.client;
   }
 
   isAuthenticated() {
-    return !!this.sessionCookie;
+    return !!this.client;
   }
 }
 
