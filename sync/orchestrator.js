@@ -21,16 +21,19 @@ export class SyncOrchestrator {
       config.garmin.tokenPath
     );
     
+    // Create state database first so we can pass it to StravaClient
+    this.db = new StateDatabase(config.state.dbPath);
+    
     this.stravaClient = new StravaClient(
       config.strava.clientId,
       config.strava.clientSecret,
       config.strava.refreshToken,
-      config.strava.accessToken
+      config.strava.accessToken,
+      this.db
     );
     
     this.matcher = new ActivityMatcher(config.sync.matchingTimeWindowMinutes);
     this.merger = new ActivityMerger();
-    this.db = new StateDatabase(config.state.dbPath);
   }
 
   /**

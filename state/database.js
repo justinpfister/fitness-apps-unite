@@ -100,6 +100,30 @@ export class StateDatabase {
     return this.data.authTokens;
   }
 
+  setStravaTokens(tokens) {
+    this.data.stravaTokens = {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresAt: tokens.expiresAt instanceof Date 
+        ? tokens.expiresAt.toISOString() 
+        : new Date(tokens.expiresAt).toISOString(),
+    };
+    this.save();
+    logger.info('Saved Strava tokens to state database');
+  }
+
+  getStravaTokens() {
+    if (!this.data.stravaTokens) {
+      return null;
+    }
+    
+    return {
+      accessToken: this.data.stravaTokens.accessToken,
+      refreshToken: this.data.stravaTokens.refreshToken,
+      expiresAt: new Date(this.data.stravaTokens.expiresAt),
+    };
+  }
+
   setLastSyncTime(time) {
     this.data.lastSyncTime = time;
     this.save();

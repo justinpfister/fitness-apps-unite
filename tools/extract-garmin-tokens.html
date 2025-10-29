@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Garmin Token Extractor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #007bff;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .warning {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Garmin Token Extractor</h1>
+        <p>This tool helps extract Garmin authentication tokens from your browser session.</p>
+        
+        <div class="section warning">
+            <strong>⚠️ Important:</strong> Make sure you're logged into <a href="https://connect.garmin.com" target="_blank">connect.garmin.com</a> in another tab before running this.
+        </div>
+
+        <div class="section">
+            <h2>Step 1: Extract from Cookies</h2>
+            <button onclick="extractFromCookies()">Extract Cookies</button>
+            <pre id="cookies-output">Click the button to extract cookies...</pre>
+        </div>
+
+        <div class="section">
+            <h2>Step 2: Extract from LocalStorage</h2>
+            <button onclick="extractFromLocalStorage()">Extract LocalStorage</button>
+            <pre id="localStorage-output">Click the button to extract LocalStorage...</pre>
+        </div>
+
+        <div class="section">
+            <h2>Step 3: Extract from SessionStorage</h2>
+            <button onclick="extractFromSessionStorage()">Extract SessionStorage</button>
+            <pre id="sessionStorage-output">Click the button to extract SessionStorage...</pre>
+        </div>
+
+        <div class="section">
+            <h2>Found Tokens</h2>
+            <p>Copy the JSON below and save it to: <code>data/garmin-tokens/oauth1_token.json</code></p>
+            <button onclick="generateTokenFile()">Generate Token File</button>
+            <pre id="token-output">Tokens will appear here...</pre>
+        </div>
+    </div>
+
+    <script>
+        function extractFromCookies() {
+            const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+                const [name, value] = cookie.trim().split('=');
+                if (name && (name.toLowerCase().includes('oauth') || name.toLowerCase().includes('token'))) {
+                    acc[name] = value;
+                }
+                return acc;
+            }, {});
+            
+            document.getElementById('cookies-output').textContent = JSON.stringify(cookies, null, 2);
+            return cookies;
+        }
+
+        function extractFromLocalStorage() {
+            const storage = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.toLowerCase().includes('oauth') || key.toLowerCase().includes('token') || key.toLowerCase().includes('auth'))) {
+                    storage[key] = localStorage.getItem(key);
+                }
+            }
+            document.getElementById('localStorage-output').textContent = JSON.stringify(storage, null, 2);
+            return storage;
+        }
+
+        function extractFromSessionStorage() {
+            const storage = {};
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                if (key && (key.toLowerCase().includes('oauth') || key.toLowerCase().includes('token') || key.toLowerCase().includes('auth'))) {
+                    storage[key] = sessionStorage.getItem(key);
+                }
+            }
+            document.getElementById('sessionStorage-output').textContent = JSON.stringify(storage, null, 2);
+            return storage;
+        }
+
+        function generateTokenFile() {
+            const cookies = extractFromCookies();
+            const localStorage = extractFromLocalStorage();
+            const sessionStorage = extractFromSessionStorage();
+            
+            // Try to find OAuth tokens
+            let token = null;
+            let tokenSecret = null;
+            
+            // Check cookies
+            for (const [key, value] of Object.entries(cookies)) {
+                if (key.toLowerCase().includes('oauth') && key.toLowerCase().includes('token') && !key.toLowerCase().includes('secret')) {
+                    token = value;
+                }
+                if (key.toLowerCase().includes('oauth') && key.toLowerCase().includes('secret')) {
+                    tokenSecret = value;
+                }
+            }
+            
+            // Check storage
+            Object.assign({}, localStorage, sessionStorage);
+            const allStorage = {...localStorage, ...sessionStorage};
+            for (const [key, value] of Object.entries(allStorage)) {
+                if (key.toLowerCase().includes('oauth') && key.toLowerCase().includes('token') && !key.toLowerCase().includes('secret')) {
+                    token = token || value;
+                }
+                if (key.toLowerCase().includes('oauth') && key.toLowerCase().includes('secret')) {
+                    tokenSecret = tokenSecret || value;
+                }
+            }
+            
+            if (token && tokenSecret) {
+                const tokenFile = {
+                    token: token,
+                    token_secret: tokenSecret
+                };
+                document.getElementById('token-output').textContent = JSON.stringify(tokenFile, null, 2);
+            } else {
+                document.getElementById('token-output').textContent = 'No OAuth tokens found. You may need to:\n1. Login to connect.garmin.com in this tab\n2. Check the Network tab for authentication requests\n3. Look for tokens in request headers';
+            }
+        }
+    </script>
+</body>
+</html>
+

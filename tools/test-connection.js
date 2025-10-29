@@ -3,6 +3,7 @@ import { config, validateConfig } from '../utils/config.js';
 import { PelotonClient } from '../clients/peloton.js';
 import { GarminClient } from '../clients/garmin.js';
 import { StravaClient } from '../clients/strava.js';
+import { StateDatabase } from '../state/database.js';
 
 /**
  * Test script to verify API connections
@@ -51,11 +52,13 @@ async function testGarmin() {
 async function testStrava() {
   console.log('\n--- Testing Strava Connection ---');
   try {
+    const stateDb = new StateDatabase(config.state.dbPath);
     const client = new StravaClient(
       config.strava.clientId,
       config.strava.clientSecret,
       config.strava.refreshToken,
-      config.strava.accessToken
+      config.strava.accessToken,
+      stateDb
     );
     const activities = await client.getRecentActivities(5);
     console.log(`✓ Successfully connected to Strava`);

@@ -2,11 +2,12 @@ import axios from 'axios';
 import { logger } from '../utils/logger.js';
 
 export class StravaAuth {
-  constructor() {
+  constructor(persistenceCallback = null) {
     this.baseUrl = 'https://www.strava.com/api/v3';
     this.accessToken = null;
     this.refreshToken = null;
     this.expiresAt = null;
+    this.persistenceCallback = persistenceCallback;
   }
 
   async refreshAccessToken(clientId, clientSecret, refreshToken) {
@@ -24,13 +25,20 @@ export class StravaAuth {
       this.refreshToken = response.data.refresh_token;
       this.expiresAt = new Date(response.data.expires_at * 1000);
 
-      logger.info('Successfully refreshed Strava access token');
-
-      return {
+      const tokens = {
         accessToken: this.accessToken,
         refreshToken: this.refreshToken,
         expiresAt: this.expiresAt,
       };
+
+      // Persist tokens if callback provided
+      if (this.persistenceCallback) {
+        await this.persistenceCallback(tokens);
+      }
+
+      logger.info('Successfully refreshed Strava access token');
+
+      return tokens;
     } catch (error) {
       logger.error('Failed to refresh Strava token', error.response?.data || error.message);
       throw new Error('Strava token refresh failed');
