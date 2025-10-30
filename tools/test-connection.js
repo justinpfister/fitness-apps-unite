@@ -10,10 +10,10 @@ import { StateDatabase } from '../state/database.js';
  * Usage: node tools/test-connection.js
  */
 
-async function testPeloton() {
+async function testPeloton(stateDb) {
   console.log('\n--- Testing Peloton Connection ---');
   try {
-    const client = new PelotonClient(config.peloton.username, config.peloton.password);
+    const client = new PelotonClient(config.peloton.username, config.peloton.password, stateDb);
     const workouts = await client.getRecentWorkouts(5);
     console.log(`✓ Successfully connected to Peloton`);
     console.log(`  Found ${workouts.length} recent workouts`);
@@ -29,6 +29,14 @@ async function testPeloton() {
 
 async function testGarmin() {
   console.log('\n--- Testing Garmin Connection ---');
+  
+  // Check if Garmin is configured
+  if (!config.garmin.username || !config.garmin.password) {
+    console.log('⊘ Garmin not configured (skipped)');
+    console.log('  Add GARMIN_USERNAME and GARMIN_PASSWORD to .env to enable');
+    return null;  // null = skipped, not failed
+  }
+  
   try {
     const client = new GarminClient(
       config.garmin.username, 
@@ -85,9 +93,12 @@ async function main() {
   }
   console.log('✓ Configuration validated');
 
+  // Create state database for tests
+  const stateDb = new StateDatabase(config.state.dbPath);
+
   // Test each service
   const results = {
-    peloton: await testPeloton(),
+    peloton: await testPeloton(stateDb),
     garmin: await testGarmin(),
     strava: await testStrava(),
   };
@@ -95,19 +106,39 @@ async function main() {
   // Summary
   console.log('\n=== Summary ===');
   console.log(`Peloton: ${results.peloton ? '✓ Connected' : '✗ Failed'}`);
-  console.log(`Garmin:  ${results.garmin ? '✓ Connected' : '✗ Failed'}`);
+  console.log(`Garmin:  ${results.garmin === null ? '⊘ Skipped' : results.garmin ? '✓ Connected' : '✗ Failed'}`);
   console.log(`Strava:  ${results.strava ? '✓ Connected' : '✗ Failed'}`);
 
-  const allPassed = results.peloton && results.garmin && results.strava;
+  // Count configured and successful services
+  const configuredServices = [
+    results.peloton !== null,
+    results.garmin !== null,
+    results.strava !== null
+  ].filter(Boolean).length;
   
-  if (allPassed) {
-    console.log('\n✓ All services connected successfully!');
+  const successfulServices = [
+    results.peloton === true,
+    results.garmin === true,
+    results.strava === true
+  ].filter(Boolean).length;
+  
+  const failedServices = [
+    results.peloton === false,
+    results.garmin === false,
+    results.strava === false
+  ].filter(Boolean).length;
+
+  if (failedServices === 0 && configuredServices > 0) {
+    console.log(`\n✓ All configured services connected successfully! (${successfulServices}/${configuredServices})`);
     console.log('  You can now run: npm start (manual sync) or npm run scheduler (automated)');
+  } else if (failedServices > 0) {
+    console.log(`\n✗ Some services failed to connect (${successfulServices} working, ${failedServices} failed).`);
+    console.log('  Please check your credentials for failed services.');
   } else {
-    console.log('\n✗ Some services failed to connect. Please check your credentials.');
+    console.log('\n⚠️  No services configured. Please add credentials to .env');
   }
 
-  process.exit(allPassed ? 0 : 1);
+  process.exit(failedServices > 0 ? 1 : 0);
 }
 
 main();

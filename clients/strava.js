@@ -183,6 +183,31 @@ export class StravaClient {
     }
   }
 
+  async createManualActivity(activityData) {
+    await this.ensureAuthenticated();
+    
+    try {
+      logger.info('Creating manual activity on Strava', { name: activityData.name });
+      
+      const response = await axios.post(
+        `${this.baseUrl}/activities`,
+        activityData,
+        {
+          headers: {
+            Authorization: `Bearer ${this.auth.getAccessToken()}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      logger.info('Successfully created manual activity on Strava', { activityId: response.data.id });
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to create manual activity on Strava', error.response?.data || error.message);
+      throw error;
+    }
+  }
+
   async uploadActivity(fileData, fileName, dataType = 'tcx') {
     await this.ensureAuthenticated();
     

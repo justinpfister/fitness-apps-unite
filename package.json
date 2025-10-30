@@ -8,8 +8,15 @@
     "start": "node index.js",
     "scheduler": "node scheduler/cron.js",
     "test": "node tools/test-connection.js",
-    "strava-auth": "node tools/get-strava-token.js",
-    "garmin-setup": "node tools/garmin-token-setup.js"
+    "test:peloton": "node tools/test-peloton.js",
+    "test:garmin": "node tools/test-garmin.js",
+    "test:strava": "node tools/test-strava.js",
+    "test:data": "node tools/test-data-structure.js",
+    "test:upload": "node tools/test-upload-to-strava.js",
+    "peloton-setup": "node tools/save-peloton-session.js",
+    "garmin-setup": "node tools/garmin-token-setup.js",
+    "garmin-refresh": "node tools/update-garmin-oauth2.js",
+    "strava-auth": "node tools/get-strava-token.js"
   },
   "keywords": [
     "peloton",

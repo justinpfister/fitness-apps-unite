@@ -9,9 +9,13 @@ import { StateDatabase } from '../state/database.js';
 
 export class SyncOrchestrator {
   constructor() {
+    // Create state database first so we can pass it to clients
+    this.db = new StateDatabase(config.state.dbPath);
+    
     this.pelotonClient = new PelotonClient(
       config.peloton.username,
-      config.peloton.password
+      config.peloton.password,
+      this.db
     );
     
     this.garminClient = new GarminClient(
@@ -20,9 +24,6 @@ export class SyncOrchestrator {
       config.garmin.useTokens,
       config.garmin.tokenPath
     );
-    
-    // Create state database first so we can pass it to StravaClient
-    this.db = new StateDatabase(config.state.dbPath);
     
     this.stravaClient = new StravaClient(
       config.strava.clientId,

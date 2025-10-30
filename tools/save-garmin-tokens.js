@@ -28,29 +28,46 @@ function question(prompt) {
 
 async function saveTokens() {
   console.log('=== Garmin Token Saver ===\n');
-  console.log('The garmin-connect library needs OAuth1 tokens.\n');
-  console.log('WHERE TO FIND THEM:');
-  console.log('1. Open DevTools → Network tab');
-  console.log('2. Make an action on connect.garmin.com (refresh, navigate)');
-  console.log('3. Find an XHR/Fetch request to connect.garmin.com');
-  console.log('4. Click the request → Headers tab');
-  console.log('5. Check "Request Headers" for:');
-  console.log('   - Cookie header (expand it, look for oauth_token=... and oauth_token_secret=...)');
-  console.log('   - Authorization header');
-  console.log('   - Or any header with "oauth" or "token" in the name\n');
-  console.log('ALTERNATIVELY: Check all cookies again (may be under different domain)\n');
+  console.log('First, follow the instructions in: tools/garmin-simple-setup.md\n');
+  console.log('This script will save the tokens you extracted.\n');
   
-  const proceed = await question('Ready to enter token values? (y/n): ');
-  if (proceed.toLowerCase() !== 'y') {
-    console.log('\nPlease check Network tab first, then run this script again.\n');
-    rl.close();
-    process.exit(0);
+  const method = await question('How do you want to enter tokens?\n  1. Paste JSON (from console script)\n  2. Enter manually\nChoice (1 or 2): ');
+  
+  let oauthToken, oauthTokenSecret;
+  
+  if (method.trim() === '1') {
+    console.log('\nPaste the JSON output from the browser console script:');
+    console.log('(should look like: {"token": "...", "token_secret": "..."})\n');
+    
+    const jsonInput = await question('Paste JSON: ');
+    
+    try {
+      const tokens = JSON.parse(jsonInput.trim());
+      oauthToken = tokens.token;
+      oauthTokenSecret = tokens.token_secret;
+      
+      if (!oauthToken || oauthToken === 'NOT_FOUND') {
+        console.log('\n⚠️  Token extraction failed.');
+        console.log('Try the manual method or check the setup guide.\n');
+        rl.close();
+        process.exit(1);
+      }
+    } catch (error) {
+      console.log('\n✗ Failed to parse JSON:', error.message);
+      console.log('Make sure you copied the complete JSON object.\n');
+      rl.close();
+      process.exit(1);
+    }
+  } else {
+    console.log('\n=== Enter OAuth1 Token Values Manually ===\n');
+    oauthToken = await question('oauth_token (or GARMIN-SSO-CUST-GUID): ').then(v => v.trim());
+    oauthTokenSecret = await question('oauth_token_secret (or same as token): ').then(v => v.trim());
+    
+    if (!oauthTokenSecret) {
+      console.log('Using token as secret (common for Garmin SSO cookies)');
+      oauthTokenSecret = oauthToken;
+    }
   }
-
-  console.log('\n=== Enter OAuth1 Token Values ===\n');
-
-  const oauthToken = await question('oauth_token (from Network headers/cookies): ').then(v => v.trim());
-  const oauthTokenSecret = await question('oauth_token_secret (from Network headers/cookies): ').then(v => v.trim());
 
   if (!oauthToken || !oauthTokenSecret) {
     console.log('\n⚠️  Warning: Missing token values.');

@@ -6,6 +6,8 @@ export const config = {
   peloton: {
     username: process.env.PELOTON_USERNAME || '',
     password: process.env.PELOTON_PASSWORD || '',
+    sessionId: process.env.PELOTON_SESSION_ID || '',
+    userId: process.env.PELOTON_USER_ID || '',
   },
   garmin: {
     username: process.env.GARMIN_USERNAME || '',
@@ -34,8 +36,6 @@ export function validateConfig() {
   const required = [
     'PELOTON_USERNAME',
     'PELOTON_PASSWORD',
-    'GARMIN_USERNAME',
-    'GARMIN_PASSWORD',
     'STRAVA_CLIENT_ID',
     'STRAVA_CLIENT_SECRET',
   ];
@@ -45,6 +45,18 @@ export function validateConfig() {
   if (missing.length > 0) {
     console.error('Missing required environment variables:', missing.join(', '));
     return false;
+  }
+
+  // Garmin is optional - warn if credentials are partial
+  const hasGarminUsername = !!process.env.GARMIN_USERNAME;
+  const hasGarminPassword = !!process.env.GARMIN_PASSWORD;
+  
+  if (hasGarminUsername && !hasGarminPassword) {
+    console.warn('⚠️  Garmin username provided but password missing');
+  } else if (!hasGarminUsername && hasGarminPassword) {
+    console.warn('⚠️  Garmin password provided but username missing');
+  } else if (!hasGarminUsername && !hasGarminPassword) {
+    console.log('ℹ️  Garmin credentials not configured (optional)');
   }
 
   return true;

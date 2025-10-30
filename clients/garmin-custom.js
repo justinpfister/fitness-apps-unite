@@ -1,49 +1,68 @@
 import { logger } from '../utils/logger.js';
-import { GarminAuth } from '../auth/garmin.js';
-import { GarminCustomClient } from './garmin-custom.js';
+import { GarminCustomAuth } from '../auth/garmin-custom.js';
 
-export class GarminClient {
-  constructor(username, password, useTokens = false, tokenPath = './data/garmin-tokens') {
-    this.useTokens = useTokens;
-    this.tokenPath = tokenPath;
-    
-    // Use custom client if tokens are enabled (for MFA accounts)
-    if (useTokens) {
-      logger.info('Using custom Garmin client with OAuth tokens');
-      this.customClient = new GarminCustomClient(tokenPath);
-      this.isCustom = true;
-    } else {
-      this.auth = new GarminAuth(username, password, useTokens, tokenPath);
-      this.isCustom = false;
-    }
-    
-    this.username = username;
-    this.password = password;
+/**
+ * Custom Garmin client using direct OAuth token authentication
+ * Replaces the garmin-connect library for MFA accounts
+ */
+export class GarminCustomClient {
+  constructor(tokenPath = './data/garmin-tokens') {
+    this.auth = new GarminCustomAuth(tokenPath);
   }
 
   async ensureAuthenticated() {
-    if (this.isCustom) {
-      // Custom client handles auth internally
-      return;
-    }
     if (!this.auth.isAuthenticated()) {
-      await this.auth.login();
+      this.auth.loadTokens();
     }
   }
 
   async getRecentActivities(limit = 10) {
-    // Use custom client if available
-    if (this.isCustom) {
-      return await this.customClient.getRecentActivities(limit);
-    }
-    
     await this.ensureAuthenticated();
     
     try {
       logger.info('Fetching recent Garmin activities');
       
-      const client = this.auth.getClient();
-      const activities = await client.getActivities(0, limit);
+      // Garmin API endpoint - use exact endpoint from browser
+      const activitiesData = await this.auth.get('/activitylist-service/activities/search/activities', {
+        start: 0,
+        limit: limit
+      });
+      
+      logger.info('Garmin API returned data');
+
+      // Handle different response formats
+      let activities = [];
+      if (Array.isArray(activitiesData)) {
+        activities = activitiesData;
+      } else if (activitiesData && Array.isArray(activitiesData.activities)) {
+        activities = activitiesData.activities;
+      } else if (activitiesData && activitiesData.activityList) {
+        activities = activitiesData.activityList;
+      } else if (activitiesData && typeof activitiesData === 'object') {
+        // Log the structure to debug
+        const keys = Object.keys(activitiesData);
+        logger.info('Response object keys:', keys);
+        
+        // Empty object might mean no activities
+        if (keys.length === 0) {
+          logger.info('Empty response - likely no activities in account');
+          activities = [];
+        } else if (activitiesData.data) {
+          activities = activitiesData.data;
+        } else if (activitiesData.results) {
+          activities = activitiesData.results;
+        } else if (activitiesData.items) {
+          activities = activitiesData.items;
+        } else {
+          logger.warn('Could not find activities array in response. Keys:', keys);
+          logger.warn('Sample data:', JSON.stringify(activitiesData).substring(0, 500));
+          // Don't throw - might just be a different format or no activities
+          activities = [];
+        }
+      } else {
+        logger.warn('Unexpected response type:', typeof activitiesData);
+        activities = [];
+      }
 
       logger.info(`Found ${activities.length} Garmin activities`);
 
@@ -55,16 +74,10 @@ export class GarminClient {
   }
 
   async getActivityDetails(activityId) {
-    // Use custom client if available
-    if (this.isCustom) {
-      return await this.customClient.getActivityDetails(activityId);
-    }
-    
     await this.ensureAuthenticated();
     
     try {
-      const client = this.auth.getClient();
-      const activity = await client.getActivity(activityId);
+      const activity = await this.auth.get(`/activity-service/activity/${activityId}`);
       return activity;
     } catch (error) {
       logger.error('Failed to fetch activity details', error.message);
@@ -73,17 +86,12 @@ export class GarminClient {
   }
 
   async getActivitySamples(activityId) {
-    // Use custom client if available
-    if (this.isCustom) {
-      return await this.customClient.getActivitySamples(activityId);
-    }
-    
     await this.ensureAuthenticated();
     
     try {
-      const client = this.auth.getClient();
-      const activity = await client.getActivity(activityId);
-      return this.parseSamples(activity);
+      // Get detailed metrics for the activity
+      const details = await this.auth.get(`/activity-service/activity/${activityId}/details`);
+      return this.parseSamples(details);
     } catch (error) {
       logger.error('Failed to fetch activity samples', error.message);
       return [];
@@ -91,18 +99,17 @@ export class GarminClient {
   }
 
   async uploadActivity(tcxData, activityName) {
-    // Use custom client if available
-    if (this.isCustom) {
-      return await this.customClient.uploadActivity(tcxData, activityName);
-    }
-    
     await this.ensureAuthenticated();
     
     try {
       logger.info('Uploading activity to Garmin Connect', { activityName });
       
-      const client = this.auth.getClient();
-      const result = await client.uploadActivity(tcxData);
+      // Garmin upload endpoint
+      const result = await this.auth.post('/upload-service/upload/.tcx', tcxData, {
+        headers: {
+          'Content-Type': 'application/xml'
+        }
+      });
 
       logger.info('Successfully uploaded activity to Garmin Connect');
       return result;
@@ -137,16 +144,16 @@ export class GarminClient {
   parseSamples(data) {
     const samples = [];
     
-    // Handle garmin-connect library data structure
+    // Handle Garmin API data structure
     if (data.metricDescriptors && data.activityDetailMetrics) {
       const descriptors = data.metricDescriptors;
       const metrics = data.activityDetailMetrics;
 
       // Find indices for metrics we care about
-      const hrIndex = descriptors.findIndex(d => d.key === 'directHeartRate');
-      const cadenceIndex = descriptors.findIndex(d => d.key === 'directCadence');
-      const speedIndex = descriptors.findIndex(d => d.key === 'directSpeed');
-      const powerIndex = descriptors.findIndex(d => d.key === 'directPower');
+      const hrIndex = descriptors.findIndex(d => d.key === 'directHeartRate' || d.key === 'heartRate');
+      const cadenceIndex = descriptors.findIndex(d => d.key === 'directCadence' || d.key === 'cadence');
+      const speedIndex = descriptors.findIndex(d => d.key === 'directSpeed' || d.key === 'speed');
+      const powerIndex = descriptors.findIndex(d => d.key === 'directPower' || d.key === 'power');
 
       metrics.forEach(metric => {
         const sample = {
@@ -167,17 +174,6 @@ export class GarminClient {
         }
 
         samples.push(sample);
-      });
-    } else if (data.samples) {
-      // Handle simplified sample format if available
-      data.samples.forEach(sample => {
-        samples.push({
-          timestamp: new Date(sample.time),
-          heartRate: sample.heartRate,
-          cadence: sample.cadence,
-          speed: sample.speed,
-          power: sample.power,
-        });
       });
     }
 

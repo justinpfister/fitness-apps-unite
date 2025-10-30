@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Garmin Fresh Token Extractor</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .step {
+            background: #f8f9fa;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+        }
+        .step h3 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin: 10px 5px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+        }
+        button.secondary {
+            background: #6c757d;
+        }
+        button.secondary:hover {
+            background: #5a6268;
+        }
+        pre {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 20px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .success {
+            background: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        .warning {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+            color: #856404;
+        }
+        .error {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        .copy-btn {
+            background: #007bff;
+            padding: 8px 16px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .copy-btn:hover {
+            background: #0056b3;
+        }
+        #results {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏃 Garmin Fresh Token Extractor</h1>
+        <p class="subtitle">Extract valid OAuth tokens from your active Garmin session</p>
+        
+        <div class="step warning">
+            <h3>⚠️ IMPORTANT: Before You Start</h3>
+            <p><strong>You MUST be on connect.garmin.com for this to work!</strong></p>
+            <ol>
+                <li>Open a new tab and go to: <a href="https://connect.garmin.com" target="_blank">https://connect.garmin.com</a></li>
+                <li>Log in (complete MFA if prompted)</li>
+                <li>Come back to THIS tab</li>
+                <li>Click the button below</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>Step 1: Extract Tokens</h3>
+            <p>Click this button to automatically extract your Garmin tokens:</p>
+            <button onclick="extractTokens()">🔍 Extract My Tokens</button>
+        </div>
+
+        <div id="results">
+            <div class="step success">
+                <h3>✓ Tokens Extracted!</h3>
+                <p>Copy each JSON block and save to the corresponding file:</p>
+            </div>
+
+            <div class="step">
+                <h3>OAuth1 Token</h3>
+                <p>Save this to: <code>data/garmin-tokens/oauth1_token.json</code></p>
+                <button class="copy-btn" onclick="copyToClipboard('oauth1-output')">📋 Copy OAuth1</button>
+                <pre id="oauth1-output"></pre>
+            </div>
+
+            <div class="step">
+                <h3>OAuth2 Token</h3>
+                <p>Save this to: <code>data/garmin-tokens/oauth2_token.json</code></p>
+                <button class="copy-btn" onclick="copyToClipboard('oauth2-output')">📋 Copy OAuth2</button>
+                <pre id="oauth2-output"></pre>
+            </div>
+
+            <div class="step">
+                <h3>Next Steps</h3>
+                <ol>
+                    <li>Copy OAuth1 JSON → paste into <code>data/garmin-tokens/oauth1_token.json</code></li>
+                    <li>Copy OAuth2 JSON → paste into <code>data/garmin-tokens/oauth2_token.json</code></li>
+                    <li>Run: <code>npm run test:garmin</code></li>
+                </ol>
+            </div>
+        </div>
+
+        <div id="error-output" class="step error" style="display:none;">
+            <h3>❌ Extraction Failed</h3>
+            <p id="error-message"></p>
+        </div>
+    </div>
+
+    <script>
+        async function extractTokens() {
+            try {
+                console.clear();
+                console.log('🔍 Extracting Garmin tokens...\n');
+                
+                // Get cookies
+                const cookies = document.cookie.split(';').reduce((acc, c) => {
+                    const [k, v] = c.trim().split('=');
+                    if (k) acc[k] = v;
+                    return acc;
+                }, {});
+                
+                // Extract OAuth1 token (from SSO cookie)
+                const oauth1Token = cookies['GARMIN-SSO-CUST-GUID'] || cookies['oauth_token'];
+                
+                if (!oauth1Token) {
+                    showError('OAuth1 token not found. Make sure you\'re logged into connect.garmin.com in another tab, then try again.');
+                    return;
+                }
+                
+                // Try to get OAuth2 token by making an authenticated request
+                let oauth2Token = null;
+                let refreshToken = null;
+                let expiresAt = Math.floor(Date.now() / 1000) + 3600; // Default 1 hour from now
+                
+                try {
+                    // Make a request to get fresh tokens from the API
+                    const response = await fetch('https://connect.garmin.com/modern/proxy/userprofile-service/userprofile', {
+                        credentials: 'include',
+                        headers: {
+                            'Accept': 'application/json'
+                        }
+                    });
+                    
+                    // Check response headers for tokens
+                    const authHeader = response.headers.get('Authorization');
+                    if (authHeader && authHeader.startsWith('Bearer ')) {
+                        oauth2Token = authHeader.substring(7);
+                    }
+                    
+                    console.log('✓ API call successful');
+                    
+                    // Try to decode JWT to get expiration
+                    if (oauth2Token) {
+                        try {
+                            const payload = JSON.parse(atob(oauth2Token.split('.')[1]));
+                            if (payload.exp) {
+                                expiresAt = payload.exp;
+                            }
+                            if (payload.garmin_guid) {
+                                console.log('Found garmin_guid in token:', payload.garmin_guid);
+                            }
+                        } catch(e) {
+                            console.log('Could not decode JWT');
+                        }
+                    }
+                } catch(e) {
+                    console.warn('Could not extract OAuth2 from API:', e.message);
+                }
+                
+                // If we couldn't get OAuth2 from API, try localStorage
+                if (!oauth2Token) {
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        const value = localStorage.getItem(key);
+                        
+                        // Look for JWT tokens
+                        if (value && value.startsWith('ey') && value.includes('.')) {
+                            try {
+                                const payload = JSON.parse(atob(value.split('.')[1]));
+                                if (payload.garmin_guid || payload.client_id === 'CONNECT_WEB') {
+                                    oauth2Token = value;
+                                    if (payload.exp) expiresAt = payload.exp;
+                                    console.log('Found OAuth2 in localStorage:', key);
+                                    break;
+                                }
+                            } catch(e) {}
+                        }
+                        
+                        // Look for JSON with access_token
+                        if (value && value.includes('access_token')) {
+                            try {
+                                const parsed = JSON.parse(value);
+                                if (parsed.access_token) {
+                                    oauth2Token = parsed.access_token;
+                                    refreshToken = parsed.refresh_token;
+                                    expiresAt = parsed.expires_at || parsed.exp || expiresAt;
+                                    console.log('Found OAuth2 in localStorage:', key);
+                                    break;
+                                }
+                            } catch(e) {}
+                        }
+                    }
+                }
+                
+                // Build output
+                const oauth1Json = {
+                    token: oauth1Token,
+                    token_secret: oauth1Token  // Often the same for SSO
+                };
+                
+                const oauth2Json = {
+                    access_token: oauth2Token || 'NEEDS_MANUAL_EXTRACTION',
+                    refresh_token: refreshToken || oauth2Token || 'NEEDS_MANUAL_EXTRACTION',
+                    expires_at: expiresAt
+                };
+                
+                // Display results
+                document.getElementById('oauth1-output').textContent = JSON.stringify(oauth1Json, null, 2);
+                document.getElementById('oauth2-output').textContent = JSON.stringify(oauth2Json, null, 2);
+                document.getElementById('results').style.display = 'block';
+                
+                if (oauth2Token) {
+                    console.log('\n✅ SUCCESS! Both tokens extracted.');
+                } else {
+                    console.log('\n⚠️ OAuth1 extracted, but OAuth2 needs manual extraction.');
+                    showError('OAuth2 token could not be auto-extracted. You\'ll need to find it manually in the Network tab. See instructions in tools/garmin-simple-setup.md');
+                }
+                
+            } catch (error) {
+                showError('Extraction failed: ' + error.message);
+                console.error('Full error:', error);
+            }
+        }
+        
+        function showError(message) {
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('error-output').style.display = 'block';
+        }
+        
+        function copyToClipboard(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('✓ Copied to clipboard!');
+            });
+        }
+    </script>
+</body>
+</html>
+

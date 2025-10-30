@@ -145,5 +145,27 @@ export class StateDatabase {
       !a.syncedToStrava
     );
   }
+
+  setPelotonSession(session) {
+    this.data.pelotonSession = {
+      sessionId: session.sessionId,
+      userId: session.userId,
+      savedAt: new Date().toISOString(),
+    };
+    this.save();
+    logger.info('Saved Peloton session to state database');
+  }
+
+  getPelotonSession() {
+    if (!this.data.pelotonSession) {
+      return null;
+    }
+    
+    return {
+      sessionId: this.data.pelotonSession.sessionId,
+      userId: this.data.pelotonSession.userId,
+      savedAt: new Date(this.data.pelotonSession.savedAt),
+    };
+  }
 }
 

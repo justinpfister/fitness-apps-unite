@@ -3,8 +3,8 @@ import { logger } from '../utils/logger.js';
 import { PelotonAuth } from '../auth/peloton.js';
 
 export class PelotonClient {
-  constructor(username, password) {
-    this.auth = new PelotonAuth();
+  constructor(username, password, stateDatabase = null) {
+    this.auth = new PelotonAuth(stateDatabase);
     this.username = username;
     this.password = password;
     this.baseUrl = 'https://api.onepeloton.com';
